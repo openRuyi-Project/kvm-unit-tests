@@ -13,7 +13,12 @@
  * by name not tracked here with cpu_has_extension_name()
  */
 enum {
+	ISA_SMCDELEG,
+	ISA_SMCSRIND,
+	ISA_SSAIA,
+	ISA_SSCCFG,
 	ISA_SSTC,
+	ISA_SSCSRIND,
 	ISA_MAX,
 };
 __static_assert(ISA_MAX <= __riscv_xlen, "Need to increase thread_info.isa");
