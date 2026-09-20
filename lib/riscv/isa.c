@@ -12,7 +12,7 @@
 typedef void (*isa_func_t)(const char *, int, void *);
 
 struct isa_info {
-	unsigned long hartid;
+	unsigned long id;
 	isa_func_t func;
 	void *data;
 };
@@ -74,7 +74,7 @@ static void isa_parse_fdt(int cpu_node, u64 hartid, void *data)
 	const struct fdt_property *prop;
 	int len;
 
-	if (hartid != info->hartid)
+	if (hartid != info->id)
 		return;
 
 	prop = fdt_get_property(dt_fdt(), cpu_node, "riscv,isa", &len);
@@ -83,32 +83,70 @@ static void isa_parse_fdt(int cpu_node, u64 hartid, void *data)
 	isa_parse(prop->data, len, info);
 }
 
-static void isa_init_acpi(void)
+#ifdef CONFIG_EFI
+#include <acpi.h>
+
+static void isa_parse_acpi(struct acpi_table_rhct *rhct, struct acpi_rhct_node_hart_info *hart_info, void *data)
 {
-	assert_msg(false, "ACPI not available");
+	struct acpi_rhct_node *node;
+	struct acpi_rhct_node_isa_string *isa_string;
+	struct isa_info *info = (struct isa_info *)data;
+	if (hart_info->uid != info->id)
+		return;
+	for (int i = 0; i < hart_info->num_offsets; i++) {
+		node = (void *)rhct + hart_info->nodes[i];
+		if (node->type == RHCT_NODE_ISA_STRING) {
+			isa_string = (void *) node;
+			isa_parse(isa_string->isa, isa_string->isa_length, info);
+		}
+	}
 }
+
+static void acpi_rhct_for_each_hart(
+	void (*func)(struct acpi_table_rhct *, struct acpi_rhct_node_hart_info *, void *), void *data)
+{
+	struct acpi_table_rhct *rhct;
+	struct acpi_rhct_node *node;
+	struct acpi_rhct_node_hart_info *hart_info;
+	rhct = find_acpi_table_addr(RHCT_SIGNATURE);
+	assert_msg(rhct, "Cannot find ACPI RHCT");
+	node = (void *)rhct + rhct->node_offset;
+	for (int i = 0; i < rhct->node_count; i++) {
+		if (node->type == RHCT_NODE_HART_INFO) {
+			hart_info = (void *)node;
+			func(rhct, hart_info, data);
+		}
+		assert(node->length >= sizeof(*node));
+		node = (void *)node + node->length;
+	}
+}
+#endif
 
 void isa_init(struct thread_info *ti)
 {
 	struct isa_info info = {
-		.hartid = ti->hartid,
 		.func = isa_bit,
 		.data = ti,
 	};
 	int ret;
 
 	if (dt_available()) {
+		info.id = ti->hartid;
 		ret = dt_for_each_cpu_node(isa_parse_fdt, &info);
 		assert(ret == 0);
 	} else {
-		isa_init_acpi();
+#ifdef CONFIG_EFI
+		info.id = ti->uid;
+		acpi_rhct_for_each_hart(isa_parse_acpi, &info);
+#else
+		assert_msg(false, "ACPI not available");
+#endif
 	}
 }
 
 bool cpu_has_extension_name(int cpu, const char *ext)
 {
 	struct isa_info info = {
-		.hartid = cpus[cpu].hartid,
 		.func = isa_name,
 		.data = &(struct isa_check){ .ext = ext, },
 	};
@@ -116,10 +154,16 @@ bool cpu_has_extension_name(int cpu, const char *ext)
 	int ret;
 
 	if (dt_available()) {
+		info.id = cpus[cpu].hartid;
 		ret = dt_for_each_cpu_node(isa_parse_fdt, &info);
 		assert(ret == 0);
 	} else {
+#ifdef CONFIG_EFI
+		info.id = cpus[cpu].uid;
+		acpi_rhct_for_each_hart(isa_parse_acpi, &info);
+#else
 		assert_msg(false, "ACPI not available");
+#endif
 	}
 
 	return check->found;
