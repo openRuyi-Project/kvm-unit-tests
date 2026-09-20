@@ -28,7 +28,10 @@
 static volatile u8 *uart0_base = UART_EARLY_BASE;
 static u32 uart0_reg_width = 1;
 static u32 uart0_reg_shift;
-static struct spinlock uart_lock;
+static struct spinlock console_lock;
+#ifdef CONFIG_SBI_CONSOLE
+static bool has_dbcn;
+#endif
 
 static u32 uart0_read(u32 num)
 {
@@ -71,16 +74,11 @@ static void uart0_init_fdt(void)
 				break;
 		}
 
-#ifdef CONFIG_SBI_CONSOLE
-		uart0_base = NULL;
-		return;
-#else
 		if (ret) {
 			printf("%s: Compatible uart not found in the device tree, aborting...\n",
 			       __func__);
 			abort();
 		}
-#endif
 	} else {
 		const fdt32_t *val;
 		int len;
@@ -107,6 +105,12 @@ static void uart0_init_acpi(void)
 
 void io_init(void)
 {
+#ifdef CONFIG_SBI_CONSOLE
+	if (sbi_probe(SBI_EXT_DBCN)) {
+		has_dbcn = true;
+		return;
+	}
+#endif
 	if (dt_available())
 		uart0_init_fdt();
 	else
@@ -119,38 +123,41 @@ void io_init(void)
 	}
 }
 
-void sbi_puts(const char *s);
-void sbi_puts(const char *s)
+#ifdef CONFIG_SBI_CONSOLE
+static void sbi_puts(const char *s)
 {
 	phys_addr_t addr = virt_to_phys((void *)s);
 	unsigned long hi = upper_32_bits(addr);
 	unsigned long lo = lower_32_bits(addr);
 
-	spin_lock(&uart_lock);
+	spin_lock(&console_lock);
 	sbi_ecall(SBI_EXT_DBCN, SBI_EXT_DBCN_CONSOLE_WRITE, strlen(s), lo, hi, 0, 0, 0);
-	spin_unlock(&uart_lock);
+	spin_unlock(&console_lock);
 }
+#endif
 
-void uart0_puts(const char *s);
-void uart0_puts(const char *s)
+static void uart0_puts(const char *s)
 {
 	assert(uart0_base);
-	spin_lock(&uart_lock);
+	spin_lock(&console_lock);
 	while (*s) {
 		while (!(uart0_read(UART_LSR_OFFSET) & UART_LSR_THRE))
 			;
 		uart0_write(0, *s++);
 	}
-	spin_unlock(&uart_lock);
+	spin_unlock(&console_lock);
 }
 
 void puts(const char *s)
 {
 #ifdef CONFIG_SBI_CONSOLE
-	sbi_puts(s);
-#else
-	uart0_puts(s);
+	if (has_dbcn) {
+		sbi_puts(s);
+		return;
+	}
 #endif
+
+	uart0_puts(s);
 }
 
 /*
