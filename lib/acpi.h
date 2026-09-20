@@ -20,6 +20,7 @@
 #define MADT_SIGNATURE ACPI_SIGNATURE('A','P','I','C')
 #define SPCR_SIGNATURE ACPI_SIGNATURE('S','P','C','R')
 #define GTDT_SIGNATURE ACPI_SIGNATURE('G','T','D','T')
+#define RHCT_SIGNATURE ACPI_SIGNATURE('R','H','C','T')
 
 #define ACPI_SIGNATURE_8BYTE(c1, c2, c3, c4, c5, c6, c7, c8) \
 	(((uint64_t)(ACPI_SIGNATURE(c1, c2, c3, c4))) |	     \
@@ -326,6 +327,14 @@ struct acpi_table_gtdt {
 	u32 platform_timer_offset;
 	u32 virtual_el2_timer_interrupt;
 	u32 virtual_el2_timer_flags;
+};
+
+struct acpi_table_rhct {
+	ACPI_TABLE_HEADER_DEF
+	u32 flags;
+	u64 timebase_frequency;
+	u32 node_count;
+	u32 node_offset;
 };
 
 /* Reset to default packing */

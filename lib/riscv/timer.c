@@ -13,24 +13,37 @@
 #include <asm/smp.h>
 #include <asm/timer.h>
 
+#ifdef CONFIG_EFI
+#include <acpi.h>
+#endif
+
 void timer_get_frequency(void)
 {
-	const struct fdt_property *prop;
-	u32 *data;
-	int cpus, len;
+	if (dt_available()) {
+		const struct fdt_property *prop;
+		u32 *data;
+		int cpus, len;
 
-	assert_msg(dt_available(), "ACPI not yet supported");
+		const void *fdt = dt_fdt();
 
-	const void *fdt = dt_fdt();
+		cpus = fdt_path_offset(fdt, "/cpus");
+		assert(cpus >= 0);
 
-	cpus = fdt_path_offset(fdt, "/cpus");
-	assert(cpus >= 0);
+		prop = fdt_get_property(fdt, cpus, "timebase-frequency", &len);
+		assert(prop != NULL && len == 4);
 
-	prop = fdt_get_property(fdt, cpus, "timebase-frequency", &len);
-	assert(prop != NULL && len == 4);
-
-	data = (u32 *)prop->data;
-	timebase_frequency = fdt32_to_cpu(*data);
+		data = (u32 *)prop->data;
+		timebase_frequency = fdt32_to_cpu(*data);
+	} else {
+#ifdef CONFIG_EFI
+		struct acpi_table_rhct *rhct;
+		rhct = find_acpi_table_addr(RHCT_SIGNATURE);
+		assert_msg(rhct, "Cannot find ACPI RHCT");
+		timebase_frequency = rhct->timebase_frequency;
+#else
+		assert_msg(false, "ACPI not available");
+#endif
+	}
 }
 
 void timer_start(unsigned long duration_us)
