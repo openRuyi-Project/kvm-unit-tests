@@ -13,6 +13,9 @@
  * by name not tracked here with cpu_has_extension_name()
  */
 enum {
+	ISA_SSAIA,
+	ISA_SSCCFG,
+	ISA_SSCSRIND,
 	ISA_SSTC,
 	ISA_MAX,
 };
