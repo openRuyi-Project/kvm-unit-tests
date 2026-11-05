@@ -16,6 +16,7 @@
 #include <on-cpus.h>
 #include <vmalloc.h>
 #include <asm/csr.h>
+#include <asm/isa.h>
 #include <asm/mmu.h>
 #include <asm/page.h>
 #include <asm/processor.h>
@@ -104,6 +105,9 @@ static void cpu_init(void)
 	} else {
 		cpu_init_acpi();
 	}
+
+	for (int cpu = 0; cpu < nr_cpus; cpu++)
+		isa_init(&cpus[cpu]);
 
 	me = hartid_to_cpu(csr_read(CSR_SSCRATCH));
 	assert(cpu_present(me));
